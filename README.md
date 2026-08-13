@@ -21,11 +21,26 @@ precisa de login nem token.
 
 ## 1. Configurar o WhatsApp (CallMeBot)
 
-1. Salve **+34 644 59 71 67** nos seus contatos como "CallMeBot".
-2. Mande a mensagem: `I allow callmebot to send me messages` pelo WhatsApp.
+O número do bot **muda de tempos em tempos** (o número antigo leva denúncia
+de spam e é substituído) — antes de começar, confirme o número atual em
+https://www.callmebot.com/blog/free-api-whatsapp-messages/. No momento em
+que este README foi escrito, o número era **+34 623 75 84 18**.
+
+1. Salve o número atual do bot nos seus contatos como "CallMeBot".
+2. Mande a mensagem: `I allow callmebot to send me messages` pelo WhatsApp
+   pra esse contato. Espere até 2 minutos pela resposta com o `apikey`.
 3. Você recebe um `apikey` de volta — guarde ele.
-4. Copie `.env.example` para `.env` e preencha `CALLMEBOT_PHONE` (seu número,
-   com DDI, ex: `5531999999999`) e `CALLMEBOT_APIKEY`.
+4. Copie `.env.example` para `.env` e preencha:
+   - `CALLMEBOT_PHONE`: **seu** número, com `+` e DDI, ex: `+5531999999999`
+     (tem que ser exatamente o formato que aparece no seu WhatsApp)
+   - `CALLMEBOT_APIKEY`: o apikey que você recebeu
+
+**Teste antes de confiar no GitHub Actions:** cole essa URL no navegador
+trocando pelos seus dados — se a mensagem chegar no WhatsApp, está tudo
+certo:
+```
+https://api.callmebot.com/whatsapp.php?phone=+5531999999999&text=teste&apikey=SEU_APIKEY
+```
 
 ## 2. Rodar localmente
 
