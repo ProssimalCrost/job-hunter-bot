@@ -12,6 +12,7 @@ import os
 from dotenv import load_dotenv
 
 from scraper.linkedin import search_jobs
+from utils.filters import experience_level_codes
 
 load_dotenv()
 
@@ -23,9 +24,11 @@ def main():
         else os.getenv("KEYWORDS", "Node.js").split(",")[0].strip()
     )
     location = os.getenv("SEARCH_LOCATION", "Brasil")
+    levels = [l.strip().lower() for l in os.getenv("LEVELS", "estagio,junior,pleno").split(",")]
+    fe_codes = experience_level_codes(levels)
 
-    print(f"Buscando '{keyword}' em '{location}' (últimas 24h)...\n")
-    jobs = search_jobs(keyword, location, hours=24)
+    print(f"Buscando '{keyword}' em '{location}' (últimas 24h, f_E={fe_codes})...\n")
+    jobs = search_jobs(keyword, location, hours=24, experience_levels=fe_codes)
 
     print(f"Total bruto (sem nenhum filtro): {len(jobs)} vaga(s)\n")
     for job in jobs[:15]:

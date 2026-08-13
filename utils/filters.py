@@ -6,12 +6,26 @@ import unicodedata
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "cache.json")
 
-# Termos (em pt-BR e en) que indicam cada nível no título da vaga
-LEVEL_TERMS = {
-    "estagio": ["estagio", "estagiario", "intern", "internship", "trainee"],
-    "junior": ["junior", "jr", "entry level", "graduate"],
-    "pleno": ["pleno", "mid-level", "mid level", "intermediate"],
+# Mapeia nível desejado -> código nativo f_E do LinkedIn.
+# 1=Estágio(Internship) 2=Entry level 3=Associate 4=Mid-Senior 5=Director 6=Executive
+LEVEL_TO_LINKEDIN_FE = {
+    "estagio": "1",
+    "junior": "2",
+    "pleno": "3",
 }
+
+# Denylist: título contendo qualquer um desses termos é descartado, mesmo
+# que o LinkedIn já tenha classificado a vaga como júnior/pleno/estágio no
+# f_E — serve de segunda checagem contra vaga sênior mal classificada.
+# NÃO usamos allowlist (exigir "júnior" no título) porque a maioria das
+# vagas reais não escreve o nível no título — só perderíamos vaga boa.
+SENIOR_DENYLIST_TERMS = [
+    "senior", "sênior", "sr.", "sr ",
+    "especialista", "specialist", "staff", "principal",
+    "coordenador", "coordinator", "gerente", "manager",
+    "head of", "tech lead", "lead ", "arquiteto", "architect",
+    "diretor", "director",
+]
 
 
 def _normalize(text: str) -> str:
@@ -20,25 +34,33 @@ def _normalize(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c))
 
 
-def matches_level(title: str, levels: list[str]) -> bool:
-    """True se o título da vaga bater com algum dos níveis desejados."""
+def experience_level_codes(levels: list[str]) -> list[str]:
+    """Converte níveis desejados (ex: ['estagio','junior']) em códigos f_E."""
+    return sorted({LEVEL_TO_LINKEDIN_FE[l] for l in levels if l in LEVEL_TO_LINKEDIN_FE})
+
+
+def is_senior_title(title: str) -> bool:
+    """True se o título contiver sinal claro de vaga sênior/liderança."""
     norm_title = _normalize(title)
-    for level in levels:
-        for term in LEVEL_TERMS.get(level, [level]):
-            if term in norm_title:
-                return True
-    return False
+    return any(term in norm_title for term in SENIOR_DENYLIST_TERMS)
 
 
-def matches_location(location: str, allow_remote_only_terms: list[str] | None = None) -> bool:
-    """Filtro simples de local: remoto OU cidades do Vale do Aço (MG)."""
+DEFAULT_LOCATION_TERMS = [
+    "remote", "remoto", "home office", "brasil",
+    "ipatinga", "coronel fabriciano", "timoteo", "santana do paraiso",
+    "vale do aco", "minas gerais", " mg",
+]
+
+
+def matches_location(location: str, terms: list[str] | None = None) -> bool:
+    """Filtro simples de local: compara contra uma lista de termos aceitos.
+
+    `terms` normalmente vem do .env (LOCATION_TERMS) via main.py. Se não for
+    passado, cai no default acima.
+    """
     norm_loc = _normalize(location)
-    terms = allow_remote_only_terms or [
-        "remote", "remoto", "home office",
-        "ipatinga", "coronel fabriciano", "timoteo", "santana do paraiso",
-        "vale do aco", "minas gerais", " mg",
-    ]
-    return any(term in norm_loc for term in terms)
+    terms = terms or DEFAULT_LOCATION_TERMS
+    return any(_normalize(term) in norm_loc for term in terms)
 
 
 def load_sent_ids() -> set:

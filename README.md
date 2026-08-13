@@ -61,7 +61,7 @@ bot a cada hora nos servidores do GitHub.
    - `CALLMEBOT_APIKEY`
 3. Em **Settings → Secrets and variables → Actions → Variables** (opcional,
    senão usa os valores padrão do código), adicione:
-   - `KEYWORDS`, `LEVELS`, `SEARCH_LOCATION`
+   - `KEYWORDS`, `LEVELS`, `SEARCH_LOCATION`, `LOCATION_TERMS`
 4. Pronto — o workflow já roda sozinho a cada hora. Pra testar sem esperar,
    use o botão "Run workflow" na aba Actions.
 
@@ -81,14 +81,36 @@ job-hunter-bot/
 └── .github/workflows/cron.yml
 ```
 
+## Critério de filtro (como o bot decide o que é "júnior" ou "relevante")
+
+**Nível:** em vez de adivinhar pelo título da vaga (o que descartava vaga
+boa só por não ter a palavra "júnior" escrita), o bot pede o nível
+diretamente pro LinkedIn via parâmetro `f_E` — o mesmo filtro que aparece
+como checkbox na busca do site (Estágio / Entry level / Associate). Isso já
+vem filtrado na origem. Como segunda checagem, `utils/filters.py` descarta
+qualquer título com sinal explícito de vaga sênior/liderança ("sênior",
+"especialista", "tech lead", "gerente" etc.) que eventualmente escape do
+filtro do LinkedIn — ver `SENIOR_DENYLIST_TERMS`.
+
+**Local:** compara o campo de localização da vaga contra uma lista de
+termos aceitos (case/acento-insensitive). Ajuste via `.env`:
+
+```
+LOCATION_TERMS=remote,remoto,home office,brasil,ipatinga,coronel fabriciano,timoteo,santana do paraiso,vale do aco,minas gerais,mg
+```
+
 ## Ajustar busca
 
 Edite `.env` (local) ou as *Variables* do GitHub Actions (produção):
 - `KEYWORDS`: palavras-chave separadas por vírgula
-- `LEVELS`: `estagio,junior,pleno`
+- `LEVELS`: `estagio,junior,pleno` (convertidos pro `f_E` do LinkedIn)
 - `SEARCH_LOCATION`: termo enviado ao LinkedIn (ex: `Brasil`)
+- `LOCATION_TERMS`: termos aceitos no filtro de local pós-coleta (acima)
 
-O filtro de "Vale do Aço" (Ipatinga, Coronel Fabriciano, Timóteo, etc.) e
-"remoto" acontece depois, em `utils/filters.py`, comparando com o texto de
-localização de cada vaga — ajuste a lista `allow_remote_only_terms` lá se
-quiser incluir outras cidades.
+## Diagnóstico
+
+Rode `python debug_scraper.py "palavra-chave"` pra ver exatamente o que o
+LinkedIn está devolvendo, sem nenhum filtro. E o log do `main.py` já mostra
+o funil completo por execução: quantas vagas cruas, quantas já tinham sido
+enviadas, quantas caíram no filtro de nível, de local, e quantas são novas
+— com até 5 exemplos de título descartado em cada categoria.

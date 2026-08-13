@@ -60,8 +60,18 @@ def _parse_job_card(card) -> dict | None:
         return None
 
 
-def search_jobs(keyword: str, location: str, hours: int = 24) -> list[dict]:
-    """Busca vagas do LinkedIn publicadas nas últimas `hours` horas."""
+def search_jobs(
+    keyword: str,
+    location: str,
+    hours: int = 24,
+    experience_levels: list[str] | None = None,
+) -> list[dict]:
+    """Busca vagas do LinkedIn publicadas nas últimas `hours` horas.
+
+    experience_levels: códigos nativos do LinkedIn (f_E), ex: ["1","2","3"]
+    para Estágio/Entry level/Associate. Filtrar aqui é muito mais confiável
+    do que adivinhar o nível pelo texto do título depois.
+    """
     jobs = []
     seen_ids = set()
 
@@ -72,6 +82,8 @@ def search_jobs(keyword: str, location: str, hours: int = 24) -> list[dict]:
             "f_TPR": f"r{hours * 3600}",  # janela de tempo em segundos
             "start": page * RESULTS_PER_PAGE,
         }
+        if experience_levels:
+            params["f_E"] = ",".join(experience_levels)
         url = f"{BASE_URL}?{urlencode(params)}"
 
         try:
