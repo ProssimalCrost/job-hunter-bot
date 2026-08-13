@@ -1,0 +1,39 @@
+name: Job Hunter Bot
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # a cada hora, em ponto (UTC)
+  workflow_dispatch: {}    # botão "Run workflow" manual no GitHub
+
+permissions:
+  contents: write  # necessário pra commitar o cache.json atualizado
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Rodar o bot
+        env:
+          CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          KEYWORDS: ${{ vars.KEYWORDS }}
+          LEVELS: ${{ vars.LEVELS }}
+          SEARCH_LOCATION: ${{ vars.SEARCH_LOCATION }}
+        run: python main.py
+
+      - name: Salvar cache atualizado (evita reenviar a mesma vaga)
+        run: |
+          git config user.name "job-hunter-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/cache.json
+          git diff --quiet --cached || git commit -m "chore: atualizar cache de vagas enviadas"
+          git push
