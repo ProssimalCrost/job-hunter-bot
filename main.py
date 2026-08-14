@@ -16,36 +16,60 @@ from services.notifier import send_whatsapp_digest
 
 load_dotenv()
 
-KEYWORDS = [k.strip() for k in os.getenv(
+
+def env_str(name: str, default: str) -> str:
+    """os.getenv, mas tratando string vazia como ausente.
+
+    Necessário porque o GitHub Actions substitui `${{ vars.X }}` por string
+    VAZIA quando a Variable não está definida — o default do os.getenv não
+    entra em ação nesse caso.
+    """
+    value = os.getenv(name, "")
+    return value.strip() if value.strip() else default
+
+
+def env_list(name: str, default: str) -> list[str]:
+    """Lê variável separada por vírgula, ignorando itens vazios."""
+    return [item.strip() for item in env_str(name, default).split(",") if item.strip()]
+
+
+def env_int(name: str, default: int) -> int:
+    """Lê variável numérica, caindo no default se vazia ou inválida."""
+    raw = env_str(name, str(default))
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[main] aviso: {name}='{raw}' não é número; usando {default}")
+        return default
+
+KEYWORDS = env_list(
     "KEYWORDS", "JavaScript,TypeScript,Node.js,Spring Boot,.NET"
-).split(",") if k.strip()]
+)
 
 # Engenharia Elétrica — mesmos níveis (f_E) e mesmas condições de local
 # (raio local + remoto nacional) das keywords de TI acima.
-KEYWORDS_ELETRICA = [k.strip() for k in os.getenv(
+KEYWORDS_ELETRICA = env_list(
     "KEYWORDS_ELETRICA",
     "Engenharia Elétrica,Engenheiro Eletricista,Automação Industrial,"
     "Elétrica Industrial,Manutenção Elétrica,Projetos Elétricos"
-).split(",") if k.strip()]
+)
 
 ALL_KEYWORDS = KEYWORDS + KEYWORDS_ELETRICA
 
-LEVELS = [l.strip().lower() for l in os.getenv(
-    "LEVELS", "estagio,junior,pleno"
-).split(",")]
+LEVELS = [l.lower() for l in env_list("LEVELS", "estagio,junior,pleno")]
 
-SEARCH_LOCATION = os.getenv("SEARCH_LOCATION", "Brasil")  # escopo da busca remota
+SEARCH_LOCATION = env_str("SEARCH_LOCATION", "Brasil")  # escopo da busca remota
 
 # Cidade de referência pra busca local com raio (Ipatinga é a maior cidade
 # do Vale do Aço, colada em Timóteo — ajuste se quiser outra referência).
-LOCAL_SEARCH_LOCATION = os.getenv("LOCAL_SEARCH_LOCATION", "Ipatinga, Minas Gerais, Brasil")
-LOCAL_DISTANCE_MILES = int(os.getenv("LOCAL_DISTANCE_MILES", "50"))  # ~80km
+LOCAL_SEARCH_LOCATION = env_str("LOCAL_SEARCH_LOCATION", "Ipatinga, Minas Gerais, Brasil")
+LOCAL_DISTANCE_MILES = env_int("LOCAL_DISTANCE_MILES", 50)  # ~80km
 
-LOCATION_TERMS = [t.strip() for t in os.getenv(
+LOCATION_TERMS = env_list(
     "LOCATION_TERMS",
     "remote,remoto,home office,brasil,ipatinga,coronel fabriciano,"
     "timoteo,santana do paraiso,vale do aco,minas gerais,mg"
-).split(",")]
+)
 FE_CODES = experience_level_codes(LEVELS)  # filtro nativo do LinkedIn
 
 

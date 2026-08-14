@@ -18,12 +18,11 @@ load_dotenv()
 
 
 def main():
-    keyword = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.getenv("KEYWORDS", "Node.js").split(",")[0].strip()
-    )
-    location = os.getenv("SEARCH_LOCATION", "Brasil")
+    env_keywords = (os.getenv("KEYWORDS") or "").strip() or "Node.js"
+    env_location = (os.getenv("SEARCH_LOCATION") or "").strip() or "Brasil"
+
+    keyword = sys.argv[1] if len(sys.argv) > 1 else env_keywords.split(",")[0].strip()
+    location = env_location
     levels = [l.strip().lower() for l in os.getenv("LEVELS", "estagio,junior,pleno").split(",")]
     fe_codes = experience_level_codes(levels)
 
