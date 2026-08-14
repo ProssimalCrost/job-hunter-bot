@@ -53,16 +53,28 @@ def send_whatsapp_digest(jobs: list[dict]) -> None:
     chunk = header
     chunks = []
 
+    # agrupa por área (TI / Elétrica) pra mensagem não virar lista misturada
+    by_area = {}
     for job in jobs:
-        line = (
-            f"• {job['title']} — {job['company']}\n"
-            f"  📍 {job['location']}\n"
-            f"  {job['link']}\n\n"
-        )
-        if len(chunk) + len(line) > MAX_MESSAGE_CHARS:
+        by_area.setdefault(job.get("area", "Vagas"), []).append(job)
+
+    for area, area_jobs in by_area.items():
+        section = f"— {area} ({len(area_jobs)}) —\n"
+        if len(chunk) + len(section) > MAX_MESSAGE_CHARS:
             chunks.append(chunk)
             chunk = ""
-        chunk += line
+        chunk += section
+
+        for job in area_jobs:
+            line = (
+                f"• {job['title']} — {job['company']}\n"
+                f"  📍 {job['location']}\n"
+                f"  {job['link']}\n\n"
+            )
+            if len(chunk) + len(line) > MAX_MESSAGE_CHARS:
+                chunks.append(chunk)
+                chunk = ""
+            chunk += line
 
     if chunk:
         chunks.append(chunk)

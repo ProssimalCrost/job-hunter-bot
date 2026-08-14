@@ -19,12 +19,14 @@ LEVEL_TO_LINKEDIN_FE = {
 # f_E — serve de segunda checagem contra vaga sênior mal classificada.
 # NÃO usamos allowlist (exigir "júnior" no título) porque a maioria das
 # vagas reais não escreve o nível no título — só perderíamos vaga boa.
+# Obs: "arquiteto" ficou de fora porque em engenharia/construção é cargo
+# comum sem ser sênior; "tech lead"/"lead" cobrem o caso de TI.
 SENIOR_DENYLIST_TERMS = [
     "senior", "sênior", "sr.", "sr ",
     "especialista", "specialist", "staff", "principal",
     "coordenador", "coordinator", "gerente", "manager",
-    "head of", "tech lead", "lead ", "arquiteto", "architect",
-    "diretor", "director",
+    "head of", "tech lead", "lead ", "líder", "lider",
+    "supervisor", "diretor", "director",
 ]
 
 

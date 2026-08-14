@@ -18,7 +18,17 @@ load_dotenv()
 
 KEYWORDS = [k.strip() for k in os.getenv(
     "KEYWORDS", "JavaScript,TypeScript,Node.js,Spring Boot,.NET"
-).split(",")]
+).split(",") if k.strip()]
+
+# Engenharia Elétrica — mesmos níveis (f_E) e mesmas condições de local
+# (raio local + remoto nacional) das keywords de TI acima.
+KEYWORDS_ELETRICA = [k.strip() for k in os.getenv(
+    "KEYWORDS_ELETRICA",
+    "Engenharia Elétrica,Engenheiro Eletricista,Automação Industrial,"
+    "Elétrica Industrial,Manutenção Elétrica,Projetos Elétricos"
+).split(",") if k.strip()]
+
+ALL_KEYWORDS = KEYWORDS + KEYWORDS_ELETRICA
 
 LEVELS = [l.strip().lower() for l in os.getenv(
     "LEVELS", "estagio,junior,pleno"
@@ -47,7 +57,8 @@ def collect_from_linkedin() -> list[dict]:
     raw = []
     seen_ids = set()
 
-    for keyword in KEYWORDS:
+    for keyword in ALL_KEYWORDS:
+        area = "Elétrica" if keyword in KEYWORDS_ELETRICA else "TI"
         local = search_linkedin(
             keyword, LOCAL_SEARCH_LOCATION, hours=24,
             experience_levels=FE_CODES, distance=LOCAL_DISTANCE_MILES,
@@ -58,7 +69,7 @@ def collect_from_linkedin() -> list[dict]:
             experience_levels=FE_CODES, workplace_types=["2"],
         )
         print(
-            f"[main] LinkedIn / '{keyword}': {len(local)} local(is) "
+            f"[main] LinkedIn / [{area}] '{keyword}': {len(local)} local(is) "
             f"(raio {LOCAL_DISTANCE_MILES}mi de {LOCAL_SEARCH_LOCATION}) + "
             f"{len(remote)} remoto(s) nacional"
         )
@@ -68,6 +79,7 @@ def collect_from_linkedin() -> list[dict]:
                 continue  # pode repetir entre as duas buscas
             seen_ids.add(job["id"])
             job["source"] = "LinkedIn"
+            job["area"] = area
             job["id"] = f"linkedin:{job['id']}"  # namespace pra não colidir com outras fontes
             raw.append(job)
 

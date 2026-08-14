@@ -26,8 +26,12 @@ jobs:
           CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
           KEYWORDS: ${{ vars.KEYWORDS }}
+          KEYWORDS_ELETRICA: ${{ vars.KEYWORDS_ELETRICA }}
           LEVELS: ${{ vars.LEVELS }}
           SEARCH_LOCATION: ${{ vars.SEARCH_LOCATION }}
+          LOCAL_SEARCH_LOCATION: ${{ vars.LOCAL_SEARCH_LOCATION }}
+          LOCAL_DISTANCE_MILES: ${{ vars.LOCAL_DISTANCE_MILES }}
+          LOCATION_TERMS: ${{ vars.LOCATION_TERMS }}
         run: python main.py
 
       - name: Salvar cache atualizado (evita reenviar a mesma vaga)

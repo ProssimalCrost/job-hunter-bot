@@ -61,7 +61,8 @@ bot a cada hora nos servidores do GitHub.
    - `CALLMEBOT_APIKEY`
 3. Em **Settings → Secrets and variables → Actions → Variables** (opcional,
    senão usa os valores padrão do código), adicione:
-   - `KEYWORDS`, `LEVELS`, `SEARCH_LOCATION`, `LOCATION_TERMS`
+   - `KEYWORDS`, `KEYWORDS_ELETRICA`, `LEVELS`, `SEARCH_LOCATION`,
+     `LOCAL_SEARCH_LOCATION`, `LOCAL_DISTANCE_MILES`, `LOCATION_TERMS`
 4. Pronto — o workflow já roda sozinho a cada hora. Pra testar sem esperar,
    use o botão "Run workflow" na aba Actions.
 
@@ -106,11 +107,21 @@ segunda checagem — ajustável no `.env`.
 ## Ajustar busca
 
 Edite `.env` (local) ou as *Variables* do GitHub Actions (produção):
-- `KEYWORDS`: palavras-chave separadas por vírgula
+- `KEYWORDS`: palavras-chave de TI, separadas por vírgula
+- `KEYWORDS_ELETRICA`: palavras-chave de Engenharia Elétrica — passam pelos
+  **mesmos** níveis (`f_E`) e **mesmas** condições de local (raio local +
+  remoto nacional) das de TI
 - `LEVELS`: `estagio,junior,pleno` (convertidos pro `f_E` do LinkedIn)
 - `SEARCH_LOCATION`: escopo da busca remota (ex: `Brasil`)
 - `LOCAL_SEARCH_LOCATION` / `LOCAL_DISTANCE_MILES`: cidade + raio da busca local
 - `LOCATION_TERMS`: termos aceitos no filtro de local pós-coleta
+
+⚠️ **Cuidado com o volume:** cada palavra-chave gera 2 buscas (local +
+remota), e cada busca pode paginar até 4 páginas. Com 11 keywords isso dá
+até ~88 requisições por execução, de hora em hora. Se começar a receber
+resposta vazia ou erro do LinkedIn, corte keywords ou reduza
+`MAX_PAGES_PER_KEYWORD` em `scraper/linkedin.py`. Uma alternativa é rodar
+de 2 em 2 horas (troque o cron pra `0 */2 * * *`).
 
 ## Diagnóstico
 
