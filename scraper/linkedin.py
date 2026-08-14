@@ -65,12 +65,17 @@ def search_jobs(
     location: str,
     hours: int = 24,
     experience_levels: list[str] | None = None,
+    workplace_types: list[str] | None = None,
+    distance: int | None = None,
 ) -> list[dict]:
     """Busca vagas do LinkedIn publicadas nas últimas `hours` horas.
 
     experience_levels: códigos nativos do LinkedIn (f_E), ex: ["1","2","3"]
-    para Estágio/Entry level/Associate. Filtrar aqui é muito mais confiável
-    do que adivinhar o nível pelo texto do título depois.
+    para Estágio/Entry level/Associate.
+    workplace_types: códigos nativos do LinkedIn (f_WT): "1"=Presencial,
+    "2"=Remoto, "3"=Híbrido. Ex: ["2"] pra só vaga remota.
+    distance: raio de busca em milhas em torno de `location` (ignorado se
+    `location` for um país inteiro).
     """
     jobs = []
     seen_ids = set()
@@ -84,6 +89,10 @@ def search_jobs(
         }
         if experience_levels:
             params["f_E"] = ",".join(experience_levels)
+        if workplace_types:
+            params["f_WT"] = ",".join(workplace_types)
+        if distance:
+            params["distance"] = str(distance)
         url = f"{BASE_URL}?{urlencode(params)}"
 
         try:

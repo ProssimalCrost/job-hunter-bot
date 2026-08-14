@@ -92,20 +92,25 @@ qualquer título com sinal explícito de vaga sênior/liderança ("sênior",
 "especialista", "tech lead", "gerente" etc.) que eventualmente escape do
 filtro do LinkedIn — ver `SENIOR_DENYLIST_TERMS`.
 
-**Local:** compara o campo de localização da vaga contra uma lista de
-termos aceitos (case/acento-insensitive). Ajuste via `.env`:
+**Local:** o bot faz **duas buscas por palavra-chave**, replicando o que
+você faria manualmente no site:
+1. **Local** — perto de `LOCAL_SEARCH_LOCATION` (Ipatinga por padrão, a
+   maior cidade do Vale do Aço), com raio `LOCAL_DISTANCE_MILES` (padrão
+   50 milhas ≈ 80km, igual ao filtro "(80 km)" que aparece no seu print).
+2. **Remota** — em `SEARCH_LOCATION` (Brasil), usando o filtro nativo de
+   trabalho remoto do LinkedIn (`f_WT=2`), não um texto adivinhado depois.
 
-```
-LOCATION_TERMS=remote,remoto,home office,brasil,ipatinga,coronel fabriciano,timoteo,santana do paraiso,vale do aco,minas gerais,mg
-```
+Depois disso ainda passa por um filtro de texto (`LOCATION_TERMS`) como
+segunda checagem — ajustável no `.env`.
 
 ## Ajustar busca
 
 Edite `.env` (local) ou as *Variables* do GitHub Actions (produção):
 - `KEYWORDS`: palavras-chave separadas por vírgula
 - `LEVELS`: `estagio,junior,pleno` (convertidos pro `f_E` do LinkedIn)
-- `SEARCH_LOCATION`: termo enviado ao LinkedIn (ex: `Brasil`)
-- `LOCATION_TERMS`: termos aceitos no filtro de local pós-coleta (acima)
+- `SEARCH_LOCATION`: escopo da busca remota (ex: `Brasil`)
+- `LOCAL_SEARCH_LOCATION` / `LOCAL_DISTANCE_MILES`: cidade + raio da busca local
+- `LOCATION_TERMS`: termos aceitos no filtro de local pós-coleta
 
 ## Diagnóstico
 

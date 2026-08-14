@@ -24,7 +24,12 @@ LEVELS = [l.strip().lower() for l in os.getenv(
     "LEVELS", "estagio,junior,pleno"
 ).split(",")]
 
-SEARCH_LOCATION = os.getenv("SEARCH_LOCATION", "Brasil")
+SEARCH_LOCATION = os.getenv("SEARCH_LOCATION", "Brasil")  # escopo da busca remota
+
+# Cidade de referência pra busca local com raio (Ipatinga é a maior cidade
+# do Vale do Aço, colada em Timóteo — ajuste se quiser outra referência).
+LOCAL_SEARCH_LOCATION = os.getenv("LOCAL_SEARCH_LOCATION", "Ipatinga, Minas Gerais, Brasil")
+LOCAL_DISTANCE_MILES = int(os.getenv("LOCAL_DISTANCE_MILES", "50"))  # ~80km
 
 LOCATION_TERMS = [t.strip() for t in os.getenv(
     "LOCATION_TERMS",
@@ -35,17 +40,37 @@ FE_CODES = experience_level_codes(LEVELS)  # filtro nativo do LinkedIn
 
 
 def collect_from_linkedin() -> list[dict]:
-    """Coleta vagas cruas do LinkedIn, já filtradas por nível na origem (f_E)."""
+    """Coleta vagas cruas do LinkedIn com DUAS buscas por keyword, iguais ao
+    que você faria manualmente: uma local (perto de Timóteo, com raio) e
+    outra remota (em qualquer lugar do Brasil, via filtro nativo f_WT=2).
+    """
     raw = []
+    seen_ids = set()
+
     for keyword in KEYWORDS:
-        results = search_linkedin(
-            keyword, SEARCH_LOCATION, hours=24, experience_levels=FE_CODES
+        local = search_linkedin(
+            keyword, LOCAL_SEARCH_LOCATION, hours=24,
+            experience_levels=FE_CODES, distance=LOCAL_DISTANCE_MILES,
         )
-        print(f"[main] LinkedIn / '{keyword}': {len(results)} vaga(s) crua(s)")
-        for job in results:
+        time.sleep(random.uniform(1.5, 2.5))
+        remote = search_linkedin(
+            keyword, SEARCH_LOCATION, hours=24,
+            experience_levels=FE_CODES, workplace_types=["2"],
+        )
+        print(
+            f"[main] LinkedIn / '{keyword}': {len(local)} local(is) "
+            f"(raio {LOCAL_DISTANCE_MILES}mi de {LOCAL_SEARCH_LOCATION}) + "
+            f"{len(remote)} remoto(s) nacional"
+        )
+
+        for job in local + remote:
+            if job["id"] in seen_ids:
+                continue  # pode repetir entre as duas buscas
+            seen_ids.add(job["id"])
             job["source"] = "LinkedIn"
             job["id"] = f"linkedin:{job['id']}"  # namespace pra não colidir com outras fontes
-        raw.extend(results)
+            raw.append(job)
+
         time.sleep(random.uniform(2, 4))
     return raw
 
@@ -78,7 +103,7 @@ def run() -> None:
                 if len(examples["nivel"]) < 5:
                     examples["nivel"].append(f"{job['title']} — {job['location']}")
                 continue
-            if not matches_location(job["location"]):
+            if not matches_location(job["location"], LOCATION_TERMS):
                 stats["local"] += 1
                 if len(examples["local"]) < 5:
                     examples["local"].append(f"{job['title']} — {job['location']}")
