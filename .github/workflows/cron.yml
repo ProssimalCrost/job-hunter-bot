@@ -31,6 +31,9 @@ jobs:
           SEARCH_LOCATION: ${{ vars.SEARCH_LOCATION }}
           LOCAL_SEARCH_LOCATION: ${{ vars.LOCAL_SEARCH_LOCATION }}
           LOCAL_DISTANCE_MILES: ${{ vars.LOCAL_DISTANCE_MILES }}
+          LOCAL_CITY: ${{ vars.LOCAL_CITY }}
+          LOCAL_STATE_ABBR: ${{ vars.LOCAL_STATE_ABBR }}
+          GUPY_COMPANIES: ${{ vars.GUPY_COMPANIES }}
           LOCATION_TERMS: ${{ vars.LOCATION_TERMS }}
         run: python main.py
 

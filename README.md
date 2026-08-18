@@ -1,23 +1,36 @@
 # Job Hunter Bot
 
-Coleta vagas do LinkedIn (últimas 24h) por palavra-chave, filtra por nível
-(estágio/júnior/pleno) e localização (remoto ou Vale do Aço/MG), e manda
-um resumo por WhatsApp — sem Twilio, usando o CallMeBot (gratuito).
+Coleta vagas de TI e Engenharia Elétrica (últimas 24h, quando a fonte
+permite) por palavra-chave, filtra por nível (estágio/júnior/pleno),
+assunto e localização (remoto ou Vale do Aço/MG), e manda um resumo por
+WhatsApp — sem Twilio, usando o CallMeBot (gratuito).
 
-## Fonte de dados: LinkedIn
+## Fontes de dados
 
-O scraper usa o endpoint público `jobs-guest` do LinkedIn — o mesmo que o
-navegador chama quando você pesquisa vagas sem estar logado, então não
-precisa de login nem token.
+| Fonte | Como funciona | Anti-bot? |
+|---|---|---|
+| LinkedIn | Endpoint público `jobs-guest`, sem login | Não, scraping leve funciona |
+| Catho | Busca por URL (`/vagas/{keyword}/{cidade-uf}`), sem login | Não, testado direto |
+| Gupy | Página de carreira por empresa (`<empresa>.gupy.io`), sem login | Não, testado direto |
+| Indeed / Glassdoor | — | **Sim, pesado (Cloudflare/DataDome)** — não implementado de propósito, ver abaixo |
 
-**Antes de aumentar o volume, vale saber:**
-- É um endpoint não-oficial, sem contrato de suporte — pode mudar de
-  estrutura ou ficar mais restrito sem aviso.
-- Scraping do LinkedIn vai contra os Termos de Uso da plataforma; o risco
-  prático (nesse volume baixo, sem login) é o endpoint parar de responder
-  ou pedir captcha, não necessariamente bloqueio de conta (você nem usa
-  uma conta aqui). Ainda assim, é bom saber que o risco existe.
-- O código já inclui delays entre requisições — não remova isso.
+**Indeed e Glassdoor não têm API pública e bloqueiam scraping leve** — só
+cedem com proxy residencial + navegador automatizado disfarçado + contorno
+de captcha, que é ativamente furar um sistema de segurança, não uma
+diferença de dificuldade técnica. Por isso essas duas não foram
+implementadas.
+
+**Sobre scraping em geral:** são endpoints não-oficiais, sem contrato de
+suporte — podem mudar de estrutura ou ficar mais restritos sem aviso. O
+código já inclui delays entre requisições — não remova isso.
+
+### Gupy é por empresa, não busca ampla
+
+Diferente do LinkedIn/Catho, não existe uma busca confiável entre todas as
+empresas do Gupy ao mesmo tempo — por isso a lista de empresas é manual
+(`GUPY_COMPANIES` no `.env`, já vem com `usiminas`). Pra adicionar outra
+empresa, tente abrir `https://<nome>.gupy.io/` no navegador; se carregar,
+adicione o nome à lista.
 
 ## 1. Configurar o WhatsApp (CallMeBot)
 
@@ -32,7 +45,6 @@ que este README foi escrito, o número era **+34 623 75 84 18**.
 3. Você recebe um `apikey` de volta — guarde ele.
 4. Copie `.env.example` para `.env` e preencha:
    - `CALLMEBOT_PHONE`: **seu** número, com `+` e DDI, ex: `+5531999999999`
-     (tem que ser exatamente o formato que aparece no seu WhatsApp)
    - `CALLMEBOT_APIKEY`: o apikey que você recebeu
 
 **Teste antes de confiar no GitHub Actions:** cole essa URL no navegador
@@ -62,13 +74,14 @@ bot a cada hora nos servidores do GitHub.
 3. Em **Settings → Secrets and variables → Actions → Variables** (opcional,
    senão usa os valores padrão do código), adicione:
    - `KEYWORDS`, `KEYWORDS_ELETRICA`, `LEVELS`, `SEARCH_LOCATION`,
-     `LOCAL_SEARCH_LOCATION`, `LOCAL_DISTANCE_MILES`, `LOCATION_TERMS`
+     `LOCAL_SEARCH_LOCATION`, `LOCAL_DISTANCE_MILES`, `LOCAL_CITY`,
+     `LOCAL_STATE_ABBR`, `GUPY_COMPANIES`, `LOCATION_TERMS`
 4. Pronto — o workflow já roda sozinho a cada hora. Pra testar sem esperar,
    use o botão "Run workflow" na aba Actions.
 
 Repositório **privado**: o plano free do GitHub dá 2.000 minutos/mês de
-Actions, de sobra pra rodar isso de hora em hora (cada execução leva
-segundos). Repositório **público**: minutos ilimitados.
+Actions, de sobra pra rodar isso de hora em hora. Repositório **público**:
+minutos ilimitados.
 
 ## Estrutura
 
@@ -76,57 +89,74 @@ segundos). Repositório **público**: minutos ilimitados.
 job-hunter-bot/
 ├── main.py                  # orquestra tudo
 ├── scraper/linkedin.py      # coleta via endpoint público do LinkedIn
+├── scraper/catho.py         # coleta via busca por URL do Catho
+├── scraper/gupy.py          # coleta por empresa no Gupy
 ├── services/notifier.py     # envia resumo via CallMeBot (WhatsApp)
-├── utils/filters.py         # filtro de nível/local + cache anti-duplicata
+├── utils/filters.py         # filtros de nível/assunto/local + cache
 ├── data/cache.json          # IDs de vagas já notificadas
 └── .github/workflows/cron.yml
 ```
 
-## Critério de filtro (como o bot decide o que é "júnior" ou "relevante")
+## Critério de filtro
 
-**Nível:** em vez de adivinhar pelo título da vaga (o que descartava vaga
-boa só por não ter a palavra "júnior" escrita), o bot pede o nível
-diretamente pro LinkedIn via parâmetro `f_E` — o mesmo filtro que aparece
-como checkbox na busca do site (Estágio / Entry level / Associate). Isso já
-vem filtrado na origem. Como segunda checagem, `utils/filters.py` descarta
+**Nível:** no LinkedIn, o bot pede o nível diretamente via parâmetro nativo
+`f_E` (o mesmo filtro checkbox do site: Estágio/Entry level/Associate) — já
+vem filtrado na origem. Catho e Gupy não têm equivalente confirmado, então
+passam só pela checagem abaixo.
+
+**Segunda checagem (todas as fontes):** `utils/filters.py` descarta
 qualquer título com sinal explícito de vaga sênior/liderança ("sênior",
-"especialista", "tech lead", "gerente" etc.) que eventualmente escape do
-filtro do LinkedIn — ver `SENIOR_DENYLIST_TERMS`.
+"especialista", "tech lead", "gerente" etc. — `SENIOR_DENYLIST_TERMS`).
 
-**Local:** o bot faz **duas buscas por palavra-chave**, replicando o que
-você faria manualmente no site:
-1. **Local** — perto de `LOCAL_SEARCH_LOCATION` (Ipatinga por padrão, a
-   maior cidade do Vale do Aço), com raio `LOCAL_DISTANCE_MILES` (padrão
-   50 milhas ≈ 80km, igual ao filtro "(80 km)" que aparece no seu print).
-2. **Remota** — em `SEARCH_LOCATION` (Brasil), usando o filtro nativo de
-   trabalho remoto do LinkedIn (`f_WT=2`), não um texto adivinhado depois.
+**Assunto (TI/Elétrica):** filtro adicionado depois que o bot mandou vaga
+de "Atendente de Balcão" e "Fonoaudiólogo" — o LinkedIn (e provavelmente
+outros sites) tem um comportamento de "não achei exato, aqui vai vaga
+parecida" quando a região é pequena, e isso vale pra API também, não só
+pra tela do site. `matches_domain()` exige que o título tenha alguma
+relação plausível com TI ou Elétrica (`TI_ALLOWLIST_TERMS` /
+`ELETRICA_ALLOWLIST_TERMS`) antes de aceitar a vaga — mesmo que a fonte já
+tenha "confirmado" que era relevante.
 
-Depois disso ainda passa por um filtro de texto (`LOCATION_TERMS`) como
-segunda checagem — ajustável no `.env`.
+**Local:** o bot faz até duas buscas por palavra-chave no LinkedIn (raio
+local + remoto nacional via `f_WT=2`); Catho e Gupy só fazem busca local.
+Depois disso tudo passa por um filtro de texto (`LOCATION_TERMS`) como
+segunda checagem.
+
+O raio local padrão é `LOCAL_DISTANCE_MILES=15` (~24km) em volta de
+Ipatinga — cobre Coronel Fabriciano/Timóteo/Santana do Paraíso (mesma
+conurbação) mas exclui cidades mais distantes como Itabira (~30km). Ajuste
+pra menos se quiser só Ipatinga mesmo, ou pra mais se quiser abranger mais
+cidades da região.
+
+## Mensagem do WhatsApp
+
+Agrupada por **área** (TI / Elétrica) **e** por **escopo** (Local /
+Remoto), nessa ordem: TI·Local, TI·Remoto, Elétrica·Local, Elétrica·Remoto.
+Cada vaga mostra também a fonte (`[LinkedIn]`, `[Catho]`, `[Gupy]`).
 
 ## Ajustar busca
 
 Edite `.env` (local) ou as *Variables* do GitHub Actions (produção):
-- `KEYWORDS`: palavras-chave de TI, separadas por vírgula
-- `KEYWORDS_ELETRICA`: palavras-chave de Engenharia Elétrica — passam pelos
-  **mesmos** níveis (`f_E`) e **mesmas** condições de local (raio local +
-  remoto nacional) das de TI
+- `KEYWORDS` / `KEYWORDS_ELETRICA`: palavras-chave, separadas por vírgula
 - `LEVELS`: `estagio,junior,pleno` (convertidos pro `f_E` do LinkedIn)
-- `SEARCH_LOCATION`: escopo da busca remota (ex: `Brasil`)
-- `LOCAL_SEARCH_LOCATION` / `LOCAL_DISTANCE_MILES`: cidade + raio da busca local
+- `SEARCH_LOCATION`: escopo da busca remota no LinkedIn (ex: `Brasil`)
+- `LOCAL_SEARCH_LOCATION` / `LOCAL_DISTANCE_MILES`: cidade + raio da busca
+  local no LinkedIn
+- `LOCAL_CITY` / `LOCAL_STATE_ABBR`: cidade + UF da busca local no Catho
+  (formato diferente do LinkedIn)
+- `GUPY_COMPANIES`: empresas do Gupy a monitorar
 - `LOCATION_TERMS`: termos aceitos no filtro de local pós-coleta
 
-⚠️ **Cuidado com o volume:** cada palavra-chave gera 2 buscas (local +
-remota), e cada busca pode paginar até 4 páginas. Com 11 keywords isso dá
-até ~88 requisições por execução, de hora em hora. Se começar a receber
-resposta vazia ou erro do LinkedIn, corte keywords ou reduza
-`MAX_PAGES_PER_KEYWORD` em `scraper/linkedin.py`. Uma alternativa é rodar
-de 2 em 2 horas (troque o cron pra `0 */2 * * *`).
+⚠️ **Cuidado com o volume:** com LinkedIn (2 buscas/keyword) + Catho (1
+busca/keyword) + Gupy (1 busca/empresa), 11 keywords geram bastante
+requisição por execução, de hora em hora. Se começar a receber resposta
+vazia ou erro de alguma fonte, corte keywords ou rode de 2 em 2 horas
+(troque o cron pra `0 */2 * * *` no workflow).
 
 ## Diagnóstico
 
-Rode `python debug_scraper.py "palavra-chave"` pra ver exatamente o que o
-LinkedIn está devolvendo, sem nenhum filtro. E o log do `main.py` já mostra
-o funil completo por execução: quantas vagas cruas, quantas já tinham sido
-enviadas, quantas caíram no filtro de nível, de local, e quantas são novas
-— com até 5 exemplos de título descartado em cada categoria.
+Rode `python debug_scraper.py "palavra-chave"` pra ver o que o LinkedIn
+está devolvendo, sem filtro nenhum. O log do `main.py` mostra o funil
+completo por execução: quantas vagas cruas, quantas já enviadas antes,
+quantas caíram em cada filtro (nível/assunto/local), e quantas são
+novas — com até 5 exemplos de título descartado por categoria.

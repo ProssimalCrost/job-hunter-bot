@@ -53,21 +53,29 @@ def send_whatsapp_digest(jobs: list[dict]) -> None:
     chunk = header
     chunks = []
 
-    # agrupa por área (TI / Elétrica) pra mensagem não virar lista misturada
-    by_area = {}
+    # agrupa por (área, escopo) — ex: "TI · Local", "TI · Remoto",
+    # "Elétrica · Local" — pra separar vaga perto de você da remota
+    by_group = {}
     for job in jobs:
-        by_area.setdefault(job.get("area", "Vagas"), []).append(job)
+        key = (job.get("area", "Vagas"), job.get("scope", "Local"))
+        by_group.setdefault(key, []).append(job)
 
-    for area, area_jobs in by_area.items():
-        section = f"— {area} ({len(area_jobs)}) —\n"
+    # ordem fixa: TI Local, TI Remoto, Elétrica Local, Elétrica Remoto, resto
+    order = [("TI", "Local"), ("TI", "Remoto"), ("Elétrica", "Local"), ("Elétrica", "Remoto")]
+    ordered_keys = [k for k in order if k in by_group] + [k for k in by_group if k not in order]
+
+    for area, scope in ordered_keys:
+        group_jobs = by_group[(area, scope)]
+        section = f"— {area} · {scope} ({len(group_jobs)}) —\n"
         if len(chunk) + len(section) > MAX_MESSAGE_CHARS:
             chunks.append(chunk)
             chunk = ""
         chunk += section
 
-        for job in area_jobs:
+        for job in group_jobs:
+            fonte = job.get("source", "")
             line = (
-                f"• {job['title']} — {job['company']}\n"
+                f"• {job['title']} — {job['company']} [{fonte}]\n"
                 f"  📍 {job['location']}\n"
                 f"  {job['link']}\n\n"
             )

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import unicodedata
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "cache.json")
@@ -45,6 +46,56 @@ def is_senior_title(title: str) -> bool:
     """True se o título contiver sinal claro de vaga sênior/liderança."""
     norm_title = _normalize(title)
     return any(term in norm_title for term in SENIOR_DENYLIST_TERMS)
+
+
+def normalize_text(text: str) -> str:
+    """Versão pública de _normalize, pra reuso em outros scrapers (Gupy etc.)."""
+    return _normalize(text)
+
+
+# Allowlist de relevância por área — diferente da denylist de nível acima,
+# aqui exigimos que o título tenha ALGUMA relação com o assunto. Motivo:
+# buscas locais em região pequena fazem o LinkedIn (e provavelmente outros
+# sites) devolver vaga "parecida" sem relação nenhuma quando não acha
+# resultado exato (ex: "Atendente de Balcão" numa busca por "Node.js") —
+# o próprio site já mostra esse comportamento de "correspondência ampliada"
+# na busca manual, e ele vaza pra API também.
+TI_ALLOWLIST_TERMS = [
+    "desenvolvedor", "desenvolvedora", "developer", "programador", "programadora",
+    "software", "sistemas", "dados", "tecnologia", "devops", "backend", "back-end",
+    "frontend", "front-end", "fullstack", "full stack", "full-stack",
+    "suporte tecnico", "suporte técnico", "helpdesk", "help desk",
+    "analista de sistemas", "analista de ti", "engenheiro de software",
+    "engenheira de software", "node", "javascript",
+    "typescript", "java ", "java,", "spring", "asp.net", ".net", "c#", "python",
+    "react", "angular", "vue", "sql", "banco de dados", "cloud", "aws", "azure",
+    "qa ", "tester", "scrum", "agile", "programacao", "codigo",
+    "infraestrutura de ti", "redes de computadores", "seguranca da informacao",
+]
+
+# Siglas curtas (ex: "TI") são checadas à parte com \b (palavra inteira),
+# porque como substring elas dão falso positivo (e "TI" sem espaço atrás,
+# tipo no fim da frase "Estágio em TI", nem batia como substring com espaço).
+TI_ALLOWLIST_WORDS = ["ti"]
+
+ELETRICA_ALLOWLIST_TERMS = [
+    "eletric",  # cobre eletrica/eletricista/eletrico após normalizar acento
+    "automacao", "instrumentacao", "engenheiro eletricista",
+    "engenheira eletricista", "engenharia eletrica", "projetista eletrico",
+    "subestacao", "potencia", "media tensao", "alta tensao",
+    "quadro eletrico", "cabeamento", "energia eletrica",
+]
+
+
+def matches_domain(title: str, area: str) -> bool:
+    """True se o título tiver relação plausível com a área (TI/Elétrica)."""
+    norm_title = _normalize(title)
+    if area == "Elétrica":
+        return any(_normalize(term) in norm_title for term in ELETRICA_ALLOWLIST_TERMS)
+
+    if any(_normalize(term) in norm_title for term in TI_ALLOWLIST_TERMS):
+        return True
+    return any(re.search(rf"\b{word}\b", norm_title) for word in TI_ALLOWLIST_WORDS)
 
 
 DEFAULT_LOCATION_TERMS = [

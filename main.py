@@ -5,10 +5,14 @@ import random
 from dotenv import load_dotenv
 
 from scraper.linkedin import search_jobs as search_linkedin
+from scraper.catho import search_jobs as search_catho
+from scraper.gupy import search_jobs as search_gupy
 from utils.filters import (
     experience_level_codes,
     is_senior_title,
+    matches_domain,
     matches_location,
+    normalize_text,
     load_sent_ids,
     save_sent_ids,
 )
@@ -20,38 +24,39 @@ load_dotenv()
 def env_str(name: str, default: str) -> str:
     """os.getenv, mas tratando string vazia como ausente.
 
-    Necessário porque o GitHub Actions substitui `${{ vars.X }}` por string
-    VAZIA quando a Variable não está definida — o default do os.getenv não
-    entra em ação nesse caso.
+    Necessario porque o GitHub Actions substitui ${{ vars.X }} por string
+    VAZIA quando a Variable nao esta definida - o default do os.getenv nao
+    entra em acao nesse caso.
     """
     value = os.getenv(name, "")
     return value.strip() if value.strip() else default
 
 
 def env_list(name: str, default: str) -> list[str]:
-    """Lê variável separada por vírgula, ignorando itens vazios."""
+    """Le variavel separada por virgula, ignorando itens vazios."""
     return [item.strip() for item in env_str(name, default).split(",") if item.strip()]
 
 
 def env_int(name: str, default: int) -> int:
-    """Lê variável numérica, caindo no default se vazia ou inválida."""
+    """Le variavel numerica, caindo no default se vazia ou invalida."""
     raw = env_str(name, str(default))
     try:
         return int(raw)
     except ValueError:
-        print(f"[main] aviso: {name}='{raw}' não é número; usando {default}")
+        print(f"[main] aviso: {name}='{raw}' nao e numero; usando {default}")
         return default
+
 
 KEYWORDS = env_list(
     "KEYWORDS", "JavaScript,TypeScript,Node.js,Spring Boot,.NET"
 )
 
-# Engenharia Elétrica — mesmos níveis (f_E) e mesmas condições de local
+# Engenharia Eletrica - mesmos niveis (f_E) e mesmas condicoes de local
 # (raio local + remoto nacional) das keywords de TI acima.
 KEYWORDS_ELETRICA = env_list(
     "KEYWORDS_ELETRICA",
-    "Engenharia Elétrica,Engenheiro Eletricista,Automação Industrial,"
-    "Elétrica Industrial,Manutenção Elétrica,Projetos Elétricos"
+    "Engenharia Eletrica,Engenheiro Eletricista,Automacao Industrial,"
+    "Eletrica Industrial,Manutencao Eletrica,Projetos Eletricos"
 )
 
 ALL_KEYWORDS = KEYWORDS + KEYWORDS_ELETRICA
@@ -60,10 +65,19 @@ LEVELS = [l.lower() for l in env_list("LEVELS", "estagio,junior,pleno")]
 
 SEARCH_LOCATION = env_str("SEARCH_LOCATION", "Brasil")  # escopo da busca remota
 
-# Cidade de referência pra busca local com raio (Ipatinga é a maior cidade
-# do Vale do Aço, colada em Timóteo — ajuste se quiser outra referência).
+# Cidade de referencia pra busca local. Raio reduzido pra ~24km (15mi) -
+# cobre Ipatinga + Coronel Fabriciano/Timoteo/Santana do Paraiso (mesma
+# conurbacao, a poucos km) mas EXCLUI Itabira (~30km), que estava vazando
+# vaga fora da regiao desejada.
 LOCAL_SEARCH_LOCATION = env_str("LOCAL_SEARCH_LOCATION", "Ipatinga, Minas Gerais, Brasil")
-LOCAL_DISTANCE_MILES = env_int("LOCAL_DISTANCE_MILES", 50)  # ~80km
+LOCAL_DISTANCE_MILES = env_int("LOCAL_DISTANCE_MILES", 15)  # ~24km
+
+# Cidade/UF pro Catho (formato diferente do LinkedIn, precisa separado)
+LOCAL_CITY = env_str("LOCAL_CITY", "Ipatinga")
+LOCAL_STATE_ABBR = env_str("LOCAL_STATE_ABBR", "MG")
+
+# Empresas do Gupy a monitorar (subdominio, ex: "usiminas" de usiminas.gupy.io)
+GUPY_COMPANIES = env_list("GUPY_COMPANIES", "usiminas")
 
 LOCATION_TERMS = env_list(
     "LOCATION_TERMS",
@@ -73,20 +87,25 @@ LOCATION_TERMS = env_list(
 FE_CODES = experience_level_codes(LEVELS)  # filtro nativo do LinkedIn
 
 
+def _area_for(keyword: str) -> str:
+    return "Elétrica" if keyword in KEYWORDS_ELETRICA else "TI"
+
+
 def collect_from_linkedin() -> list[dict]:
-    """Coleta vagas cruas do LinkedIn com DUAS buscas por keyword, iguais ao
-    que você faria manualmente: uma local (perto de Timóteo, com raio) e
-    outra remota (em qualquer lugar do Brasil, via filtro nativo f_WT=2).
+    """Coleta vagas cruas do LinkedIn com DUAS buscas por keyword: uma local
+    (raio apertado em volta de Ipatinga) e outra remota (Brasil, f_WT=2).
+    Marca cada vaga com area (TI/Eletrica) e scope (Local/Remoto).
     """
     raw = []
     seen_ids = set()
 
     for keyword in ALL_KEYWORDS:
-        area = "Elétrica" if keyword in KEYWORDS_ELETRICA else "TI"
+        area = _area_for(keyword)
         local = search_linkedin(
             keyword, LOCAL_SEARCH_LOCATION, hours=24,
             experience_levels=FE_CODES, distance=LOCAL_DISTANCE_MILES,
         )
+        local_ids = {j["id"] for j in local}
         time.sleep(random.uniform(1.5, 2.5))
         remote = search_linkedin(
             keyword, SEARCH_LOCATION, hours=24,
@@ -102,27 +121,75 @@ def collect_from_linkedin() -> list[dict]:
             if job["id"] in seen_ids:
                 continue  # pode repetir entre as duas buscas
             seen_ids.add(job["id"])
+            job["scope"] = "Local" if job["id"] in local_ids else "Remoto"
             job["source"] = "LinkedIn"
             job["area"] = area
-            job["id"] = f"linkedin:{job['id']}"  # namespace pra não colidir com outras fontes
+            job["id"] = f"linkedin:{job['id']}"  # namespace pra nao colidir com outras fontes
             raw.append(job)
 
         time.sleep(random.uniform(2, 4))
     return raw
 
 
-# Lista de coletores ativos. Pra adicionar uma nova fonte (Gupy, etc.),
-# escreva um scraper/<fonte>.py com uma função search_jobs() no mesmo
-# formato de scraper/linkedin.py, crie um collect_from_<fonte>() aqui do
-# mesmo jeito, e adicione ele nesta lista.
-COLLECTORS = [collect_from_linkedin]
+def collect_from_catho() -> list[dict]:
+    """Coleta vagas do Catho - so busca local (cidade+estado), o Catho nao
+    tem filtro nativo de remoto confirmado. Ver scraper/catho.py.
+    """
+    raw = []
+    for keyword in ALL_KEYWORDS:
+        area = _area_for(keyword)
+        results = search_catho(keyword, LOCAL_CITY, LOCAL_STATE_ABBR)
+        print(
+            f"[main] Catho / [{area}] '{keyword}': {len(results)} vaga(s) "
+            f"(hoje, {LOCAL_CITY}-{LOCAL_STATE_ABBR})"
+        )
+        for job in results:
+            job["source"] = "Catho"
+            job["area"] = area
+            job["scope"] = "Local"
+            job["id"] = f"catho:{job['id']}"
+            raw.append(job)
+        time.sleep(random.uniform(2, 4))
+    return raw
+
+
+def collect_from_gupy() -> list[dict]:
+    """Coleta vagas do Gupy por empresa (lista todas as vagas abertas da
+    empresa; filtra por keyword aqui ja que o Gupy nao faz busca por
+    palavra-chave entre empresas). Sem filtro nativo de 24h - ver
+    scraper/gupy.py.
+    """
+    raw = []
+    for company in GUPY_COMPANIES:
+        results = search_gupy(company)
+        print(f"[main] Gupy / '{company}': {len(results)} vaga(s) aberta(s) no total")
+        for job in results:
+            title_norm = normalize_text(job["title"])
+            matched_kw = next(
+                (kw for kw in ALL_KEYWORDS if normalize_text(kw) in title_norm), None
+            )
+            if not matched_kw:
+                continue
+            job["source"] = "Gupy"
+            job["area"] = _area_for(matched_kw)
+            job["scope"] = "Local"  # Gupy aqui e por empresa da regiao
+            job["id"] = f"gupy:{job['id']}"
+            raw.append(job)
+        time.sleep(random.uniform(2, 4))
+    return raw
+
+
+# Lista de coletores ativos. Pra adicionar uma nova fonte, escreva um
+# scraper/<fonte>.py com uma funcao search_jobs() e um collect_from_<fonte>()
+# aqui do mesmo jeito, e adicione ele nesta lista.
+COLLECTORS = [collect_from_linkedin, collect_from_catho, collect_from_gupy]
 
 
 def run() -> None:
     sent_ids = load_sent_ids()
     new_jobs = []
-    stats = {"cru": 0, "ja_enviada": 0, "nivel": 0, "local": 0, "nova": 0}
-    examples = {"nivel": [], "local": []}  # amostra do que foi descartado, pra debug
+    stats = {"cru": 0, "ja_enviada": 0, "nivel": 0, "tema": 0, "local": 0, "nova": 0}
+    examples = {"nivel": [], "tema": [], "local": []}  # amostra do descartado, pra debug
 
     for collector in COLLECTORS:
         raw_jobs = collector()
@@ -132,17 +199,25 @@ def run() -> None:
             if job["id"] in sent_ids:
                 stats["ja_enviada"] += 1
                 continue
-            # nível já veio filtrado pelo f_E do LinkedIn; aqui só barramos
-            # sinal explícito de senioridade que tenha escapado (denylist)
+            # nivel ja veio filtrado (f_E no LinkedIn); aqui so barramos
+            # sinal explicito de senioridade que tenha escapado (denylist)
             if is_senior_title(job["title"]):
                 stats["nivel"] += 1
                 if len(examples["nivel"]) < 5:
-                    examples["nivel"].append(f"{job['title']} — {job['location']}")
+                    examples["nivel"].append(f"{job['title']} - {job['location']}")
+                continue
+            # relevancia de assunto: barra vaga sem nada a ver (ex: sites
+            # devolvendo "parecido" quando nao acham exato numa regiao
+            # pequena - foi o que aconteceu com "Atendente de Balcao")
+            if not matches_domain(job["title"], job.get("area", "TI")):
+                stats["tema"] += 1
+                if len(examples["tema"]) < 5:
+                    examples["tema"].append(f"{job['title']} - {job['location']}")
                 continue
             if not matches_location(job["location"], LOCATION_TERMS):
                 stats["local"] += 1
                 if len(examples["local"]) < 5:
-                    examples["local"].append(f"{job['title']} — {job['location']}")
+                    examples["local"].append(f"{job['title']} - {job['location']}")
                 continue
 
             new_jobs.append(job)
@@ -151,19 +226,22 @@ def run() -> None:
 
     print(
         f"[main] resumo: {stats['cru']} coletada(s) | "
-        f"{stats['ja_enviada']} já enviada(s) antes | "
-        f"{stats['nivel']} descartada(s) por nível | "
+        f"{stats['ja_enviada']} ja enviada(s) antes | "
+        f"{stats['nivel']} descartada(s) por nivel | "
+        f"{stats['tema']} descartada(s) por assunto | "
         f"{stats['local']} descartada(s) por local | "
         f"{stats['nova']} nova(s)"
     )
-    if examples["nivel"]:
-        print("[main] exemplos descartados por nível (denylist sênior):")
-        for ex in examples["nivel"]:
-            print(f"    - {ex}")
-    if examples["local"]:
-        print("[main] exemplos descartados por local:")
-        for ex in examples["local"]:
-            print(f"    - {ex}")
+    rotulos = {
+        "nivel": "nivel (denylist senior)",
+        "tema": "assunto (fora de TI/Eletrica)",
+        "local": "local",
+    }
+    for categoria, rotulo in rotulos.items():
+        if examples[categoria]:
+            print(f"[main] exemplos descartados por {rotulo}:")
+            for ex in examples[categoria]:
+                print(f"    - {ex}")
 
     if new_jobs:
         send_whatsapp_digest(new_jobs)
