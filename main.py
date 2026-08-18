@@ -155,9 +155,10 @@ def collect_from_catho() -> list[dict]:
 
 def collect_from_gupy() -> list[dict]:
     """Coleta vagas do Gupy por empresa (lista todas as vagas abertas da
-    empresa; filtra por keyword aqui ja que o Gupy nao faz busca por
-    palavra-chave entre empresas). Sem filtro nativo de 24h - ver
-    scraper/gupy.py.
+    empresa). Se o título bater com alguma keyword de TI/Elétrica, marca a
+    área certa; senão, marca "TI" como área provisória — o filtro de
+    assunto em run() decide se vira Diversas ou é descartada (mesma regra
+    das outras fontes). Sem filtro nativo de 24h — ver scraper/gupy.py.
     """
     raw = []
     for company in GUPY_COMPANIES:
@@ -168,32 +169,36 @@ def collect_from_gupy() -> list[dict]:
             matched_kw = next(
                 (kw for kw in ALL_KEYWORDS if normalize_text(kw) in title_norm), None
             )
-            if not matched_kw:
-                continue
             job["source"] = "Gupy"
-            job["area"] = _area_for(matched_kw)
-            job["scope"] = "Local"  # Gupy aqui e por empresa da regiao
+            job["area"] = _area_for(matched_kw) if matched_kw else "TI"
+            job["scope"] = "Local"  # Gupy aqui é por empresa da região
             job["id"] = f"gupy:{job['id']}"
             raw.append(job)
         time.sleep(random.uniform(2, 4))
     return raw
 
 
-# Lista de coletores ativos. Pra adicionar uma nova fonte, escreva um
-# scraper/<fonte>.py com uma funcao search_jobs() e um collect_from_<fonte>()
-# aqui do mesmo jeito, e adicione ele nesta lista.
-COLLECTORS = [collect_from_linkedin, collect_from_catho, collect_from_gupy]
+# Lista de coletores ativos + rótulo de exibição. Pra adicionar uma nova
+# fonte, escreva um scraper/<fonte>.py com uma função search_jobs() e um
+# collect_from_<fonte>() aqui do mesmo jeito, e adicione ele nesta lista.
+COLLECTORS = [
+    ("LinkedIn", collect_from_linkedin),
+    ("Catho", collect_from_catho),
+    ("Gupy", collect_from_gupy),
+]
 
 
 def run() -> None:
     sent_ids = load_sent_ids()
     new_jobs = []
-    stats = {"cru": 0, "ja_enviada": 0, "nivel": 0, "tema": 0, "local": 0, "nova": 0}
+    stats = {"cru": 0, "ja_enviada": 0, "nivel": 0, "tema": 0, "diversas": 0, "local": 0, "nova": 0}
     examples = {"nivel": [], "tema": [], "local": []}  # amostra do descartado, pra debug
+    fonte_counts = {}  # pra confirmar que cada fonte está entrando na pesquisa
 
-    for collector in COLLECTORS:
+    for fonte, collector in COLLECTORS:
         raw_jobs = collector()
         stats["cru"] += len(raw_jobs)
+        fonte_counts[fonte] = len(raw_jobs)
 
         for job in raw_jobs:
             if job["id"] in sent_ids:
@@ -206,14 +211,22 @@ def run() -> None:
                 if len(examples["nivel"]) < 5:
                     examples["nivel"].append(f"{job['title']} - {job['location']}")
                 continue
-            # relevancia de assunto: barra vaga sem nada a ver (ex: sites
-            # devolvendo "parecido" quando nao acham exato numa regiao
-            # pequena - foi o que aconteceu com "Atendente de Balcao")
+            # relevancia de assunto: vaga local sem nada a ver com TI/Eletrica
+            # (ex: sites devolvendo "parecido" quando nao acham exato numa
+            # regiao pequena - foi o que aconteceu com "Atendente de Balcao")
+            # nao e descartada, vira "Diversas" — voce pediu pra ver essas
+            # tambem, desde que sejam da sua regiao. Vaga REMOTA fora do
+            # assunto continua descartada (nao faz sentido pra "diversas
+            # da regiao").
             if not matches_domain(job["title"], job.get("area", "TI")):
-                stats["tema"] += 1
-                if len(examples["tema"]) < 5:
-                    examples["tema"].append(f"{job['title']} - {job['location']}")
-                continue
+                if job.get("scope") == "Local":
+                    job["area"] = "Diversas"
+                    stats["diversas"] += 1
+                else:
+                    stats["tema"] += 1
+                    if len(examples["tema"]) < 5:
+                        examples["tema"].append(f"{job['title']} - {job['location']}")
+                    continue
             if not matches_location(job["location"], LOCATION_TERMS):
                 stats["local"] += 1
                 if len(examples["local"]) < 5:
@@ -225,16 +238,30 @@ def run() -> None:
             stats["nova"] += 1
 
     print(
+        "[main] vagas cruas por fonte: "
+        + " | ".join(f"{fonte}={n}" for fonte, n in fonte_counts.items())
+    )
+    fontes_zeradas = [fonte for fonte, n in fonte_counts.items() if n == 0]
+    if fontes_zeradas:
+        print(
+            f"[main] ⚠️  fonte(s) sem nenhuma vaga crua nesta execução: "
+            f"{', '.join(fontes_zeradas)} — pode ser dia parado, ou a fonte "
+            f"pode estar bloqueando/mudando estrutura. Vale rodar "
+            f"debug_scraper.py ou checar manualmente se voltar zerado por "
+            f"várias execuções seguidas."
+        )
+    print(
         f"[main] resumo: {stats['cru']} coletada(s) | "
         f"{stats['ja_enviada']} ja enviada(s) antes | "
         f"{stats['nivel']} descartada(s) por nivel | "
-        f"{stats['tema']} descartada(s) por assunto | "
+        f"{stats['tema']} descartada(s) por assunto (remoto fora do tema) | "
+        f"{stats['diversas']} reclassificada(s) como Diversas | "
         f"{stats['local']} descartada(s) por local | "
         f"{stats['nova']} nova(s)"
     )
     rotulos = {
         "nivel": "nivel (denylist senior)",
-        "tema": "assunto (fora de TI/Eletrica)",
+        "tema": "assunto (remoto fora do tema, descartado)",
         "local": "local",
     }
     for categoria, rotulo in rotulos.items():

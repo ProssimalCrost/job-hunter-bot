@@ -108,14 +108,24 @@ passam só pela checagem abaixo.
 qualquer título com sinal explícito de vaga sênior/liderança ("sênior",
 "especialista", "tech lead", "gerente" etc. — `SENIOR_DENYLIST_TERMS`).
 
-**Assunto (TI/Elétrica):** filtro adicionado depois que o bot mandou vaga
-de "Atendente de Balcão" e "Fonoaudiólogo" — o LinkedIn (e provavelmente
-outros sites) tem um comportamento de "não achei exato, aqui vai vaga
-parecida" quando a região é pequena, e isso vale pra API também, não só
-pra tela do site. `matches_domain()` exige que o título tenha alguma
-relação plausível com TI ou Elétrica (`TI_ALLOWLIST_TERMS` /
-`ELETRICA_ALLOWLIST_TERMS`) antes de aceitar a vaga — mesmo que a fonte já
-tenha "confirmado" que era relevante.
+**Assunto (TI/Elétrica) e a seção "Diversas":** vaga LOCAL que não bate com
+nenhum termo de TI/Elétrica não é mais descartada — ela vira `área=Diversas`
+e aparece numa seção própria na mensagem, já que é vaga real da sua região,
+só que fora da stack que você busca. Vaga REMOTA fora do assunto continua
+descartada (não faz sentido pra "diversas da região"). `matches_domain()`
+ainda decide, em `utils/filters.py`.
+
+## Verificando se todas as fontes estão entrando na pesquisa
+
+O log de cada execução agora mostra, logo no início:
+```
+[main] vagas cruas por fonte: LinkedIn=12 | Catho=3 | Gupy=5
+```
+Se alguma fonte vier com `0`, aparece um aviso `⚠️` logo abaixo. Uma
+execução zerada isolada pode ser só um dia parado; se voltar `0` por várias
+execuções seguidas na mesma fonte, é sinal de bloqueio ou mudança de
+estrutura — nesse caso rode `python debug_scraper.py` localmente (só cobre
+LinkedIn por enquanto) ou abra a URL da fonte manualmente pra comparar.
 
 **Local:** o bot faz até duas buscas por palavra-chave no LinkedIn (raio
 local + remoto nacional via `f_WT=2`); Catho e Gupy só fazem busca local.
@@ -130,8 +140,9 @@ cidades da região.
 
 ## Mensagem do WhatsApp
 
-Agrupada por **área** (TI / Elétrica) **e** por **escopo** (Local /
-Remoto), nessa ordem: TI·Local, TI·Remoto, Elétrica·Local, Elétrica·Remoto.
+Agrupada por **área** (TI / Elétrica / Diversas) **e** por **escopo**
+(Local / Remoto), nessa ordem: TI·Local, TI·Remoto, Elétrica·Local,
+Elétrica·Remoto, Diversas·Local (Diversas só existe como Local — ver acima).
 Cada vaga mostra também a fonte (`[LinkedIn]`, `[Catho]`, `[Gupy]`).
 
 ## Ajustar busca

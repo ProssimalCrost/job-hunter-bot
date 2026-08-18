@@ -60,8 +60,13 @@ def send_whatsapp_digest(jobs: list[dict]) -> None:
         key = (job.get("area", "Vagas"), job.get("scope", "Local"))
         by_group.setdefault(key, []).append(job)
 
-    # ordem fixa: TI Local, TI Remoto, Elétrica Local, Elétrica Remoto, resto
-    order = [("TI", "Local"), ("TI", "Remoto"), ("Elétrica", "Local"), ("Elétrica", "Remoto")]
+    # ordem fixa: TI Local, TI Remoto, Elétrica Local, Elétrica Remoto,
+    # Diversas Local (vaga fora do tema mas na sua região), resto
+    order = [
+        ("TI", "Local"), ("TI", "Remoto"),
+        ("Elétrica", "Local"), ("Elétrica", "Remoto"),
+        ("Diversas", "Local"),
+    ]
     ordered_keys = [k for k in order if k in by_group] + [k for k in by_group if k not in order]
 
     for area, scope in ordered_keys:

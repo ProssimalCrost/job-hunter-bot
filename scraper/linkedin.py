@@ -85,6 +85,7 @@ def search_jobs(
             "keywords": keyword,
             "location": location,
             "f_TPR": f"r{hours * 3600}",  # janela de tempo em segundos
+            "sortBy": "DD",  # mais recentes primeiro, não "mais relevante"
             "start": page * RESULTS_PER_PAGE,
         }
         if experience_levels:
