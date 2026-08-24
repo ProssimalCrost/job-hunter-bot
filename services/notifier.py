@@ -19,16 +19,28 @@ CALLMEBOT_URL = "https://api.callmebot.com/whatsapp.php"
 MAX_MESSAGE_CHARS = 1800  # margem de segurança abaixo do limite do serviço
 
 
+def _clean_env(name: str) -> str:
+    """Lê variável de ambiente removendo espaço/quebra de linha nas pontas.
+
+    Secret colado com espaço ou \\n sobrando (comum ao copiar de mensagem
+    no celular) faz o CallMeBot recusar como "invalid format" mesmo com a
+    chave certa — isso pega esse caso e avisa no log quando acontece.
+    """
+    raw = os.getenv(name, "")
+    cleaned = raw.strip()
+    if raw != cleaned:
+        print(
+            f"[notifier] aviso: {name} tinha espaço/quebra de linha sobrando "
+            f"no Secret — limpo automaticamente ({len(raw)} -> {len(cleaned)} caracteres)"
+        )
+    return cleaned
+
+
 def _send_single(text: str, phone: str, apikey: str) -> bool:
-    params = {
-        "phone": phone,
-        "text": text,
-        "apikey": apikey,
-    }
     url = f"{CALLMEBOT_URL}?phone={quote(phone)}&text={quote(text)}&apikey={quote(apikey)}"
     try:
         resp = requests.get(url, timeout=15)
-        ok = resp.status_code == 200
+        ok = resp.status_code == 200 and "error" not in resp.text.lower()
         if not ok:
             print(f"[notifier] CallMeBot respondeu {resp.status_code}: {resp.text[:200]}")
         return ok
@@ -39,12 +51,20 @@ def _send_single(text: str, phone: str, apikey: str) -> bool:
 
 def send_whatsapp_digest(jobs: list[dict]) -> None:
     """Manda um resumo das vagas novas. Quebra em vários envios se precisar."""
-    phone = os.getenv("CALLMEBOT_PHONE")
-    apikey = os.getenv("CALLMEBOT_APIKEY")
+    phone = _clean_env("CALLMEBOT_PHONE")
+    apikey = _clean_env("CALLMEBOT_APIKEY")
 
     if not phone or not apikey:
-        print("[notifier] CALLMEBOT_PHONE/CALLMEBOT_APIKEY não configurados no .env")
+        print("[notifier] CALLMEBOT_PHONE/CALLMEBOT_APIKEY não configurados (vazio)")
         return
+
+    if not apikey.isdigit():
+        print(
+            f"[notifier] aviso: CALLMEBOT_APIKEY não é só números depois de "
+            f"limpo (tamanho: {len(apikey)}). A apikey do CallMeBot normalmente "
+            f"é só dígitos — confira se não colou texto extra tipo aspas ou "
+            f"'Your APIKEY is:' junto."
+        )
 
     if not jobs:
         return
